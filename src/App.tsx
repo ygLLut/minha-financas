@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { db, type Transacao, type Conta, type Categoria, type Meta, type Orcamento, type Investimento, type Recorrente, type Subcategoria } from './db';
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, AreaChart, Area, XAxis, YAxis, CartesianGrid } from 'recharts';
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import CryptoJS from 'crypto-js';
 
 const CORES = {
