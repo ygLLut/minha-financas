@@ -28,10 +28,12 @@ export default function App() {
   const [recorrentes, setRecorrentes] = useState<Recorrente[]>([]);
   const [carregado, setCarregado] = useState(false);
 
+  // ✅ CORREÇÃO: Estado do formulário com campo data
   const [form, setForm] = useState({
     descricao: '', valor: '', tipo: 'despesa' as 'receita' | 'despesa' | 'transferencia',
     contaId: '', categoriaId: '', subcategoriaId: '', cartaoId: '', contaDestinoId: '',
-    isParcelado: false, qtdParcelas: '1'
+    isParcelado: false, qtdParcelas: '1',
+    data: new Date().toISOString().split('T')[0]
   });
 
   const [filtroMes, setFiltroMes] = useState(new Date().toISOString().substring(0, 7));
@@ -102,6 +104,7 @@ export default function App() {
     if(nova) setContas(prev => [...prev, nova]);
     setNovaConta({ nome: '', tipo: 'Banco', saldoInicial: '0' });
   };
+
   const removerConta = async (id: number) => {
     if(contas.length <= 1) { alert("Você precisa manter pelo menos uma conta!"); return; }
     if(confirm("Remover esta conta? O saldo será perdido.")) {
@@ -109,12 +112,14 @@ export default function App() {
       setContas(prev => prev.filter(c => c.id !== id));
     }
   };
+
   const adicionarSubcategoria = async (e: React.FormEvent) => {
     e.preventDefault(); if (!novaSubCat.nome || !novaSubCat.categoriaPaiId) return;
     const id = await db.subcategorias.add({ nome: novaSubCat.nome, categoriaPaiId: Number(novaSubCat.categoriaPaiId) });
     const nova = await db.subcategorias.get(id!); if(nova) setSubcategorias(prev => [...prev, nova]);
     setNovaSubCat({ nome: '', categoriaPaiId: '' });
   };
+
   const adicionarRecorrente = async (e: React.FormEvent) => {
     e.preventDefault(); if(!novoRecorrente.descricao || !novoRecorrente.valor || !novoRecorrente.diaVencimento) return;
     const proximo = new Date(); const diaEscolhido = parseInt(novoRecorrente.diaVencimento);
@@ -125,6 +130,7 @@ export default function App() {
     const novo = await db.recorrentes.get(id!); if(novo) setRecorrentes(prev => [...prev, novo]);
     setNovoRecorrente({ descricao: '', valor: '', tipo: 'despesa', categoriaId: '', subcategoriaId: '', frequencia: 'Mensal', diaVencimento: '' });
   };
+
   const removerRecorrente = async (id: number) => { if(confirm("Remover conta fixa?")) { await db.recorrentes.delete(id); setRecorrentes(prev => prev.filter(r => r.id !== id)); } };
 
   const adicionarTransacao = async (e: React.FormEvent) => {
@@ -133,22 +139,26 @@ export default function App() {
     const valorParcela = valorTotal / qtdParcelas; const cartaoSelecionado = form.tipo === 'transferencia' ? null : (form.cartaoId ? Number(form.cartaoId) : null);
     const contaAtual = contas.find(c => c.id === Number(form.contaId)); const contaDest = form.contaDestinoId ? contas.find(c => c.id === Number(form.contaDestinoId)) : null;
     const subCatId = form.subcategoriaId ? Number(form.subcategoriaId) : null;
+    
+    // ✅ CORREÇÃO: Usar a data do formulário
+    const dataBase = form.data ? new Date(form.data + 'T00:00:00') : new Date();
+    
     if (form.tipo === 'transferencia') {
       if (!contaDest || !contaAtual) return; if (contaAtual.saldo < valorTotal) { alert("Saldo insuficiente!"); return; }
-      await db.transacoes.add({ descricao: `Transf: ${contaAtual.nome} -> ${contaDest.nome}`, valor: valorTotal, tipo: 'transferencia', contaId: Number(form.contaId), contaDestinoId: Number(form.contaDestinoId), categoriaId: null, subcategoriaId: null, cartaoId: null, data: new Date().toISOString() });
+      await db.transacoes.add({ descricao: `Transf: ${contaAtual.nome} -> ${contaDest.nome}`, valor: valorTotal, tipo: 'transferencia', contaId: Number(form.contaId), contaDestinoId: Number(form.contaDestinoId), categoriaId: null, subcategoriaId: null, cartaoId: null, data: dataBase.toISOString() });
       await db.contas.update(contaAtual.id!, { saldo: contaAtual.saldo - valorTotal }); await db.contas.update(contaDest.id!, { saldo: contaDest.saldo + valorTotal });
       setContas(prev => prev.map(c => c.id === contaAtual!.id ? { ...c, saldo: c.saldo - valorTotal } : c.id === contaDest!.id ? { ...c, saldo: c.saldo + valorTotal } : c));
-      setForm(prev => ({ ...prev, descricao: '', valor: '' })); db.transacoes.toArray().then(t => setTransacoes(t)); return;
+      setForm(prev => ({ ...prev, descricao: '', valor: '', data: new Date().toISOString().split('T')[0] })); db.transacoes.toArray().then(t => setTransacoes(t)); return;
     }
     for (let i = 0; i < qtdParcelas; i++) {
-      const dataParcela = new Date(); dataParcela.setMonth(dataParcela.getMonth() + i);
+      const dataParcela = new Date(dataBase); dataParcela.setMonth(dataParcela.getMonth() + i);
       await db.transacoes.add({ descricao: qtdParcelas > 1 ? `${form.descricao} (${i + 1}/${qtdParcelas})` : form.descricao, valor: valorParcela, tipo: form.tipo, contaId: Number(form.contaId), categoriaId: form.categoriaId ? Number(form.categoriaId) : null, subcategoriaId: subCatId, cartaoId: cartaoSelecionado, data: dataParcela.toISOString() });
     }
     if (contaAtual) {
       const novoSaldo = form.tipo === 'receita' ? contaAtual.saldo + valorTotal : contaAtual.saldo - valorTotal;
       await db.contas.update(contaAtual.id!, { saldo: novoSaldo }); setContas(prev => prev.map(c => c.id === contaAtual.id ? { ...c, saldo: novoSaldo } : c));
     }
-    setForm(prev => ({ ...prev, descricao: '', valor: '', categoriaId: '', subcategoriaId: '', cartaoId: '', isParcelado: false, qtdParcelas: '1' }));
+    setForm(prev => ({ ...prev, descricao: '', valor: '', categoriaId: '', subcategoriaId: '', cartaoId: '', isParcelado: false, qtdParcelas: '1', data: new Date().toISOString().split('T')[0] }));
     db.transacoes.toArray().then(t => setTransacoes(t));
   };
 
@@ -240,6 +250,7 @@ export default function App() {
              <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-blue-500 to-purple-500 shrink-0"></div>
              <div className="hidden lg:block">
                <p className="text-sm font-bold text-white">Usuário</p>
+               <p className="text-xs text-gray-500">Plano Premium</p>
              </div>
            </div>
         </div>
@@ -314,22 +325,63 @@ export default function App() {
               {/* LEFT: CHARTS & TRANSACTIONS */}
               <div className="xl:col-span-2 space-y-6">
                 
-{/* Quick Add Form */}
+                {/* Quick Add Form */}
                 <div className="bg-[#161b22] p-6 rounded-2xl border border-gray-800">
                   <h3 className="font-bold text-white mb-4 flex items-center gap-2">➕ Nova Transação Rápida</h3>
                   <form onSubmit={adicionarTransacao} className="space-y-4">
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <input type="text" placeholder="Descrição (ex: Supermercado)" required className="w-full bg-[#0d1117] border border-gray-700 rounded-xl p-3 text-sm text-white focus:border-green-500 outline-none transition" value={form.descricao} onChange={e => setForm({...form, descricao: e.target.value})} />
+                      <input 
+                        type="text" 
+                        placeholder="Descrição (ex: Supermercado)" 
+                        required 
+                        className="w-full bg-[#0d1117] border border-gray-700 rounded-xl p-3 text-sm text-white focus:border-green-500 outline-none transition" 
+                        value={form.descricao} 
+                        onChange={e => setForm({...form, descricao: e.target.value})} 
+                      />
                       <div className="grid grid-cols-2 gap-3">
-                        <input type="number" step="0.01" placeholder="R$ Valor" required className="bg-[#0d1117] border border-gray-700 rounded-xl p-3 text-sm text-white focus:border-green-500 outline-none transition" value={form.valor} onChange={e => setForm({...form, valor: e.target.value})} />
-                        <select className="bg-[#0d1117] border border-gray-700 rounded-xl p-3 text-sm text-white outline-none" value={form.tipo} onChange={e => setForm({...form, tipo: e.target.value as any, categoriaId: '', subcategoriaId: ''})}>
+                        <input 
+                          type="number" 
+                          step="0.01" 
+                          placeholder="R$ Valor" 
+                          required 
+                          className="bg-[#0d1117] border border-gray-700 rounded-xl p-3 text-sm text-white focus:border-green-500 outline-none transition" 
+                          value={form.valor} 
+                          onChange={e => setForm({...form, valor: e.target.value})} 
+                        />
+                        <select 
+                          className="bg-[#0d1117] border border-gray-700 rounded-xl p-3 text-sm text-white outline-none" 
+                          value={form.tipo} 
+                          onChange={e => setForm({...form, tipo: e.target.value as any, categoriaId: '', subcategoriaId: ''})}
+                        >
                           <option value="despesa">💸 Despesa</option>
                           <option value="receita">💰 Receita</option>
                         </select>
                       </div>
                     </div>
                     
-                    {form.tipo !== 'transferencia' ? (
+                    {/* CAMPO DE DATA */}
+                    <div className="flex items-center gap-3">
+                      <label className="text-sm text-gray-400 whitespace-nowrap">📅 Data:</label>
+                      <input 
+                        type="date" 
+                        className="flex-1 bg-[#0d1117] border border-gray-700 rounded-xl p-2.5 text-sm text-white outline-none focus:border-green-500" 
+                        value={form.data} 
+                        onChange={e => setForm({...form, data: e.target.value})} 
+                      />
+                    </div>
+
+                    {form.tipo === 'transferencia' ? (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <select className="bg-[#0d1117] border border-gray-700 rounded-xl p-3 text-sm text-white outline-none" value={form.contaId} onChange={e => setForm({...form, contaId: e.target.value})} required>
+                          <option value="">Conta Origem</option>
+                          {contas.map(c => <option key={c.id} value={c.id}>{c.nome} (R${c.saldo})</option>)}
+                        </select>
+                        <select className="bg-[#0d1117] border border-gray-700 rounded-xl p-3 text-sm text-white outline-none" value={form.contaDestinoId} onChange={e => setForm({...form, contaDestinoId: e.target.value})} required>
+                          <option value="">Conta Destino</option>
+                          {contas.filter(c => c.id !== Number(form.contaId)).map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
+                        </select>
+                      </div>
+                    ) : (
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                         <select className="bg-[#0d1117] border border-gray-700 rounded-xl p-3 text-sm text-white outline-none" value={form.contaId} onChange={e => setForm({...form, contaId: e.target.value})} required>
                           <option value="">Selecionar Conta...</option>
@@ -344,26 +396,20 @@ export default function App() {
                           {subcategorias.filter(s => s.categoriaPaiId === Number(form.categoriaId)).map(s => <option key={s.id} value={s.id}>{s.nome}</option>)}
                         </select>
                       </div>
-                    ) : (
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <select className="bg-[#0d1117] border border-gray-700 rounded-xl p-3 text-sm text-white outline-none" value={form.contaId} onChange={e => setForm({...form, contaId: e.target.value})} required>
-                          <option value="">Conta Origem</option>
-                          {contas.map(c => <option key={c.id} value={c.id}>{c.nome} (R${c.saldo})</option>)}
-                        </select>
-                        <select className="bg-[#0d1117] border border-gray-700 rounded-xl p-3 text-sm text-white outline-none" value={form.contaDestinoId} onChange={e => setForm({...form, contaDestinoId: e.target.value})} required>
-                          <option value="">Conta Destino</option>
-                          {contas.filter(c => c.id !== Number(form.contaId)).map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
-                        </select>
-                      </div>
                     )}
                     
+                    {/* BOTÕES CORRETOS */}
                     <div className="flex items-center gap-3 pt-2">
-                      {/* BOTÃO REGISTRAR (AQUI ESTAVA FALTANDO OU ERRADO) */}
-                      <button type="submit" className="flex-1 text-white font-bold py-3 rounded-xl transition shadow-lg hover:opacity-90 flex items-center justify-center gap-2" style={{backgroundColor: cor.bg}}>
+                      {/* Botão Principal: REGISTRAR */}
+                      <button 
+                        type="submit" 
+                        className="flex-1 text-white font-bold py-3 rounded-xl transition shadow-lg hover:opacity-90 flex items-center justify-center gap-2" 
+                        style={{backgroundColor: cor.bg}}
+                      >
                         ✅ Registrar
                       </button>
                       
-                      {/* Botão Toggle Transferência */}
+                      {/* Botão Secundário: Toggle Transferência */}
                       <button 
                         type="button" 
                         onClick={() => setForm(prev => ({...prev, tipo: prev.tipo === 'transferencia' ? 'despesa' : 'transferencia'}))} 
