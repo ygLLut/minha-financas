@@ -10,6 +10,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "crypto-js": "^4.2.0",
     "dexie": "^4.4.2",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
@@ -19,6 +20,7 @@
   "devDependencies": {
     "@eslint/js": "^9.39.4",
     "@tailwindcss/vite": "^4.2.2",
+    "@types/crypto-js": "^4.2.2",
     "@types/node": "^24.12.2",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
