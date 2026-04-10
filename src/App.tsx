@@ -28,7 +28,6 @@ export default function App() {
   const [recorrentes, setRecorrentes] = useState<Recorrente[]>([]);
   const [carregado, setCarregado] = useState(false);
 
-  // ✅ CORREÇÃO: Estado do formulário com campo data
   const [form, setForm] = useState({
     descricao: '', valor: '', tipo: 'despesa' as 'receita' | 'despesa' | 'transferencia',
     contaId: '', categoriaId: '', subcategoriaId: '', cartaoId: '', contaDestinoId: '',
@@ -140,7 +139,6 @@ export default function App() {
     const contaAtual = contas.find(c => c.id === Number(form.contaId)); const contaDest = form.contaDestinoId ? contas.find(c => c.id === Number(form.contaDestinoId)) : null;
     const subCatId = form.subcategoriaId ? Number(form.subcategoriaId) : null;
     
-    // ✅ CORREÇÃO: Usar a data do formulário
     const dataBase = form.data ? new Date(form.data + 'T00:00:00') : new Date();
     
     if (form.tipo === 'transferencia') {
@@ -160,6 +158,32 @@ export default function App() {
     }
     setForm(prev => ({ ...prev, descricao: '', valor: '', categoriaId: '', subcategoriaId: '', cartaoId: '', isParcelado: false, qtdParcelas: '1', data: new Date().toISOString().split('T')[0] }));
     db.transacoes.toArray().then(t => setTransacoes(t));
+  };
+
+  // ✅ NOVA FUNÇÃO: Remover transação individualmente
+  const removerTransacao = async (id: number) => {
+    if(!confirm("Remover esta transação? O saldo da conta será ajustado automaticamente.")) return;
+    const t = transacoes.find(x => x.id === id);
+    if(!t) return;
+    
+    if(t.tipo === 'receita') {
+      const c = await db.contas.get(t.contaId);
+      if(c) await db.contas.update(t.contaId, { saldo: c.saldo - t.valor });
+    } else if(t.tipo === 'despesa') {
+      const c = await db.contas.get(t.contaId);
+      if(c) await db.contas.update(t.contaId, { saldo: c.saldo + t.valor });
+    } else if(t.tipo === 'transferencia' && t.contaDestinoId) {
+      const c1 = await db.contas.get(t.contaId);
+      const c2 = await db.contas.get(t.contaDestinoId);
+      if(c1 && c2) {
+        await db.contas.update(t.contaId, { saldo: c1.saldo + t.valor });
+        await db.contas.update(t.contaDestinoId, { saldo: c2.saldo - t.valor });
+      }
+    }
+    
+    await db.transacoes.delete(id);
+    setTransacoes(prev => prev.filter(x => x.id !== id));
+    setContas(await db.contas.toArray());
   };
 
   const adicionarInvestimento = async (e: React.FormEvent) => { e.preventDefault(); const id = await db.investimentos.add({ nome: novoInvestimento.nome, tipo: novoInvestimento.tipo as any, quantidade: parseFloat(novoInvestimento.quantidade), precoMedio: parseFloat(novoInvestimento.precoMedio), precoAtual: parseFloat(novoInvestimento.precoAtual) }); const inv = await db.investimentos.get(id!); if (inv) setInvestimentos(prev => [...prev, inv]); setNovoInvestimento({ nome: '', tipo: 'Ações', quantidade: '', precoMedio: '', precoAtual: '' }); };
@@ -212,15 +236,12 @@ export default function App() {
     transacoes.filter(t => t.tipo === 'despesa').forEach(t => { const cat = categorias.find(c => c.id === t.categoriaId)?.nome || 'Outros'; mapa[cat] = (mapa[cat] || 0) + t.valor; });
     return Object.entries(mapa).map(([name, value]) => ({ name, value }));
   }, [transacoes, categorias]);
-
   const cor = CORES[corDestaque as keyof typeof CORES];
 
   if (!carregado) return <div className="flex h-screen items-center justify-center bg-[#0f1117] text-white text-lg">Carregando Dashboard...</div>;
 
   return (
     <div className="flex h-screen bg-[#0f1117] text-gray-300 font-sans overflow-hidden">
-      
-      {/* SIDEBAR */}
       <aside className="w-20 lg:w-64 bg-[#161b22] flex flex-col border-r border-gray-800 transition-all shrink-0">
         <div className="h-16 flex items-center justify-center lg:justify-start lg:px-6 border-b border-gray-800">
           <div className={`w-9 h-9 rounded-lg flex items-center justify-center font-bold text-white shrink-0`} style={{backgroundColor: cor.bg}}>F</div>
@@ -235,10 +256,10 @@ export default function App() {
             { id: 'orcamentos', icon: '📋', label: 'Orçamentos' },
             { id: 'config', icon: '⚙️', label: 'Configurações' }
           ].map(item => (
-            <button 
-              key={item.id}
-              onClick={() => setAbaAtiva(item.id as any)}
-              className={`w-full flex items-center p-3 rounded-xl transition-all ${abaAtiva === item.id ? 'bg-white/10 text-white' : 'text-gray-500 hover:bg-white/5 hover:text-gray-300'}`}
+            <button
+            key={item.id}
+            onClick={() => setAbaAtiva(item.id as any)}
+            className={`w-full flex items-center p-3 rounded-xl transition-all ${abaAtiva === item.id ? 'bg-white/10 text-white' : 'text-gray-500 hover:bg-white/5 hover:text-gray-300'}`}
             >
               <span className="text-xl">{item.icon}</span>
               <span className="ml-3 font-medium hidden lg:block">{item.label}</span>
@@ -246,20 +267,16 @@ export default function App() {
           ))}
         </nav>
         <div className="p-4 border-t border-gray-800">
-           <div className="flex items-center gap-3 justify-center lg:justify-start">
-             <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-blue-500 to-purple-500 shrink-0"></div>
-             <div className="hidden lg:block">
-               <p className="text-sm font-bold text-white">Usuário</p>
-               <p className="text-xs text-gray-500">Plano Premium</p>
-             </div>
-           </div>
+          <div className="flex items-center gap-3 justify-center lg:justify-start">
+            <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-blue-500 to-purple-500 shrink-0"></div>
+            <div className="hidden lg:block">
+              <p className="text-sm font-bold text-white">Usuário</p>
+            </div>
+          </div>
         </div>
       </aside>
 
-      {/* MAIN CONTENT */}
       <main className="flex-1 overflow-y-auto p-4 lg:p-8 space-y-8 bg-[#0f1117]">
-        
-        {/* HEADER */}
         <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-2">
           <div>
             <h1 className="text-2xl font-bold text-white capitalize">{abaAtiva === 'dashboard' ? 'Visão Geral' : abaAtiva === 'investimentos' ? 'Investimentos' : abaAtiva === 'contas' ? 'Contas & Bancos' : abaAtiva === 'metas' ? 'Metas' : abaAtiva === 'orcamentos' ? 'Orçamentos' : 'Configurações'}</h1>
@@ -274,7 +291,6 @@ export default function App() {
 
         {abaAtiva === 'dashboard' && (
           <div className="space-y-6 animate-in fade-in duration-500">
-            {/* KPI CARDS */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               <div className="bg-[#161b22] p-5 rounded-2xl border border-gray-800 hover:border-gray-700 transition">
                 <div className="flex justify-between items-start">
@@ -319,38 +335,33 @@ export default function App() {
               </div>
             </div>
 
-            {/* CHARTS & QUICK ADD GRID */}
             <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-              
-              {/* LEFT: CHARTS & TRANSACTIONS */}
               <div className="xl:col-span-2 space-y-6">
-                
-                {/* Quick Add Form */}
                 <div className="bg-[#161b22] p-6 rounded-2xl border border-gray-800">
                   <h3 className="font-bold text-white mb-4 flex items-center gap-2">➕ Nova Transação Rápida</h3>
                   <form onSubmit={adicionarTransacao} className="space-y-4">
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <input 
-                        type="text" 
-                        placeholder="Descrição (ex: Supermercado)" 
-                        required 
-                        className="w-full bg-[#0d1117] border border-gray-700 rounded-xl p-3 text-sm text-white focus:border-green-500 outline-none transition" 
-                        value={form.descricao} 
-                        onChange={e => setForm({...form, descricao: e.target.value})} 
+                      <input
+                        type="text"
+                        placeholder="Descrição (ex: Supermercado)"
+                        required
+                        className="w-full bg-[#0d1117] border border-gray-700 rounded-xl p-3 text-sm text-white focus:border-green-500 outline-none transition"
+                        value={form.descricao}
+                        onChange={e => setForm({...form, descricao: e.target.value})}
                       />
                       <div className="grid grid-cols-2 gap-3">
-                        <input 
-                          type="number" 
-                          step="0.01" 
-                          placeholder="R$ Valor" 
-                          required 
-                          className="bg-[#0d1117] border border-gray-700 rounded-xl p-3 text-sm text-white focus:border-green-500 outline-none transition" 
-                          value={form.valor} 
-                          onChange={e => setForm({...form, valor: e.target.value})} 
+                        <input
+                          type="number"
+                          step="0.01"
+                          placeholder="R$ Valor"
+                          required
+                          className="bg-[#0d1117] border border-gray-700 rounded-xl p-3 text-sm text-white focus:border-green-500 outline-none transition"
+                          value={form.valor}
+                          onChange={e => setForm({...form, valor: e.target.value})}
                         />
-                        <select 
-                          className="bg-[#0d1117] border border-gray-700 rounded-xl p-3 text-sm text-white outline-none" 
-                          value={form.tipo} 
+                        <select
+                          className="bg-[#0d1117] border border-gray-700 rounded-xl p-3 text-sm text-white outline-none"
+                          value={form.tipo}
                           onChange={e => setForm({...form, tipo: e.target.value as any, categoriaId: '', subcategoriaId: ''})}
                         >
                           <option value="despesa">💸 Despesa</option>
@@ -358,18 +369,15 @@ export default function App() {
                         </select>
                       </div>
                     </div>
-                    
-                    {/* CAMPO DE DATA */}
                     <div className="flex items-center gap-3">
                       <label className="text-sm text-gray-400 whitespace-nowrap">📅 Data:</label>
-                      <input 
-                        type="date" 
-                        className="flex-1 bg-[#0d1117] border border-gray-700 rounded-xl p-2.5 text-sm text-white outline-none focus:border-green-500" 
-                        value={form.data} 
-                        onChange={e => setForm({...form, data: e.target.value})} 
+                      <input
+                        type="date"
+                        className="flex-1 bg-[#0d1117] border border-gray-700 rounded-xl p-2.5 text-sm text-white outline-none focus:border-green-500"
+                        value={form.data}
+                        onChange={e => setForm({...form, data: e.target.value})}
                       />
                     </div>
-
                     {form.tipo === 'transferencia' ? (
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <select className="bg-[#0d1117] border border-gray-700 rounded-xl p-3 text-sm text-white outline-none" value={form.contaId} onChange={e => setForm({...form, contaId: e.target.value})} required>
@@ -397,22 +405,17 @@ export default function App() {
                         </select>
                       </div>
                     )}
-                    
-                    {/* BOTÕES CORRETOS */}
                     <div className="flex items-center gap-3 pt-2">
-                      {/* Botão Principal: REGISTRAR */}
-                      <button 
-                        type="submit" 
-                        className="flex-1 text-white font-bold py-3 rounded-xl transition shadow-lg hover:opacity-90 flex items-center justify-center gap-2" 
+                      <button
+                        type="submit"
+                        className="flex-1 text-white font-bold py-3 rounded-xl transition shadow-lg hover:opacity-90 flex items-center justify-center gap-2"
                         style={{backgroundColor: cor.bg}}
                       >
                         ✅ Registrar
                       </button>
-                      
-                      {/* Botão Secundário: Toggle Transferência */}
-                      <button 
-                        type="button" 
-                        onClick={() => setForm(prev => ({...prev, tipo: prev.tipo === 'transferencia' ? 'despesa' : 'transferencia'}))} 
+                      <button
+                        type="button"
+                        onClick={() => setForm(prev => ({...prev, tipo: prev.tipo === 'transferencia' ? 'despesa' : 'transferencia'}))}
                         className="px-4 py-3 bg-gray-800 text-gray-300 rounded-xl hover:bg-gray-700 transition text-sm border border-gray-700"
                       >
                         {form.tipo === 'transferencia' ? 'Voltar' : '↔ Transf.'}
@@ -421,7 +424,6 @@ export default function App() {
                   </form>
                 </div>
 
-                {/* Transactions Table */}
                 <div className="bg-[#161b22] rounded-2xl border border-gray-800 overflow-hidden">
                   <div className="p-5 border-b border-gray-800 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
                     <h3 className="font-bold text-white">Histórico de Transações</h3>
@@ -442,6 +444,7 @@ export default function App() {
                           <th className="p-4 hidden sm:table-cell">Categoria</th>
                           <th className="p-4 hidden md:table-cell">Data</th>
                           <th className="p-4 text-right">Valor</th>
+                          <th className="p-4 w-10"></th> {/* ✅ Coluna para botão remover */}
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-800">
@@ -459,10 +462,20 @@ export default function App() {
                               <td className={`p-4 text-right font-bold ${t.tipo === 'receita' ? 'text-green-400' : t.tipo === 'transferencia' ? 'text-gray-400' : 'text-red-400'}`}>
                                 {t.tipo === 'receita' ? '+' : t.tipo === 'transferencia' ? '↔' : '-'} R$ {t.valor.toFixed(2)}
                               </td>
+                              {/* ✅ Botão de remover transação */}
+                              <td className="p-4 text-right">
+                                <button 
+                                  onClick={() => removerTransacao(t.id!)} 
+                                  className="text-gray-500 hover:text-red-400 transition p-1 rounded-lg hover:bg-red-500/10" 
+                                  title="Remover transação"
+                                >
+                                  🗑️
+                                </button>
+                              </td>
                             </tr>
                           );
                         })}
-                        {transacoesFiltradas.length === 0 && <tr><td colSpan={4} className="p-8 text-center text-gray-500">Nenhuma transação encontrada.</td></tr>}
+                        {transacoesFiltradas.length === 0 && <tr><td colSpan={5} className="p-8 text-center text-gray-500">Nenhuma transação encontrada.</td></tr>}
                       </tbody>
                     </table>
                   </div>
@@ -474,10 +487,7 @@ export default function App() {
                 </div>
               </div>
 
-              {/* RIGHT: WIDGETS */}
               <div className="space-y-6">
-                
-                {/* Alerts */}
                 {lembretes.length > 0 && (
                   <div className="bg-amber-500/10 border border-amber-500/30 text-amber-400 p-4 rounded-2xl flex items-center gap-3">
                     <span className="text-2xl">⏰</span>
@@ -487,8 +497,6 @@ export default function App() {
                     </div>
                   </div>
                 )}
-
-                {/* Spending Pie Chart */}
                 <div className="bg-[#161b22] p-5 rounded-2xl border border-gray-800">
                    <h3 className="font-bold text-white mb-4 text-sm">Gastos por Categoria</h3>
                    <div className="h-56">
@@ -515,8 +523,6 @@ export default function App() {
                      ))}
                    </div>
                 </div>
-
-                {/* Accounts Quick View */}
                 <div className="bg-[#161b22] p-5 rounded-2xl border border-gray-800">
                    <div className="flex justify-between items-center mb-4">
                      <h3 className="font-bold text-white text-sm">Suas Contas</h3>
@@ -537,8 +543,6 @@ export default function App() {
                      ))}
                    </div>
                 </div>
-
-                {/* Investments Quick View */}
                 <div className="bg-[#161b22] p-5 rounded-2xl border border-gray-800">
                    <div className="flex justify-between items-center mb-4">
                      <h3 className="font-bold text-white text-sm">Carteira de Investimentos</h3>
@@ -558,14 +562,11 @@ export default function App() {
                      {investimentos.length > 3 && <p className="text-center text-gray-500 text-xs pt-2">+ {investimentos.length - 3} outros ativos</p>}
                    </div>
                 </div>
-
               </div>
-
             </div>
           </div>
         )}
 
-        {/* CONTAS */}
         {abaAtiva === 'contas' && (
           <div className="space-y-6 animate-in fade-in duration-500">
             <div className="bg-[#161b22] p-6 rounded-2xl border border-gray-800">
@@ -581,7 +582,6 @@ export default function App() {
                 <button className="text-white rounded-xl font-bold hover:opacity-90 transition" style={{backgroundColor: cor.bg}}>+ Adicionar Conta</button>
               </form>
             </div>
-            
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
               {contas.map(c => (
                 <div key={c.id} className="bg-[#161b22] p-6 rounded-2xl border border-gray-800 relative hover:border-gray-700 transition group">
@@ -602,7 +602,6 @@ export default function App() {
           </div>
         )}
 
-        {/* INVESTIMENTOS */}
         {abaAtiva === 'investimentos' && (
           <div className="space-y-6 animate-in fade-in duration-500">
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -623,7 +622,6 @@ export default function App() {
                   <button type="submit" className="w-full text-white p-3 rounded-xl font-bold transition hover:opacity-90" style={{backgroundColor: cor.bg}}>💎 Adicionar Ativo</button>
                 </form>
               </div>
-              
               <div className="lg:col-span-2 bg-[#161b22] p-6 rounded-2xl border border-gray-800">
                 <h2 className="text-lg font-bold text-white mb-4">📊 Distribuição da Carteira</h2>
                 <div className="h-64">
@@ -640,15 +638,14 @@ export default function App() {
                 </div>
               </div>
             </div>
-
             <div className="bg-[#161b22] rounded-2xl border border-gray-800 overflow-hidden">
               <div className="p-5 border-b border-gray-800">
                 <h3 className="font-bold text-white">Meus Ativos</h3>
               </div>
               <div className="divide-y divide-gray-800">
                 {investimentos.map(inv => {
-                  const total = inv.quantidade * inv.precoAtual; 
-                  const lucro = total - (inv.quantidade * inv.precoMedio); 
+                  const total = inv.quantidade * inv.precoAtual;
+                  const lucro = total - (inv.quantidade * inv.precoMedio);
                   const perc = ((inv.precoAtual - inv.precoMedio) / inv.precoMedio) * 100;
                   return (
                     <div key={inv.id} className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-gray-800/30 transition">
@@ -678,7 +675,6 @@ export default function App() {
           </div>
         )}
 
-        {/* METAS */}
         {abaAtiva === 'metas' && (
           <div className="space-y-6 animate-in fade-in duration-500">
             <div className="bg-[#161b22] p-6 rounded-2xl border border-gray-800">
@@ -723,7 +719,6 @@ export default function App() {
           </div>
         )}
 
-        {/* ORÇAMENTOS */}
         {abaAtiva === 'orcamentos' && (
           <div className="space-y-6 animate-in fade-in duration-500">
             <div className="bg-[#161b22] p-6 rounded-2xl border border-gray-800">
@@ -740,7 +735,7 @@ export default function App() {
             <div className="space-y-4">
               {orcamentos.map(orc => {
                 const gasto = transacoes.filter(t => t.categoriaId === orc.categoriaId && t.tipo === 'despesa').reduce((s,t) => s + t.valor, 0);
-                const pct = (gasto / orc.limite) * 100; 
+                const pct = (gasto / orc.limite) * 100;
                 const nome = categorias.find(c => c.id === orc.categoriaId)?.nome || 'Categoria';
                 return (
                   <div key={orc.id} className="bg-[#161b22] p-5 rounded-2xl border border-gray-800 hover:border-gray-700 transition">
@@ -771,11 +766,8 @@ export default function App() {
           </div>
         )}
 
-        {/* CONFIG */}
         {abaAtiva === 'config' && (
           <div className="space-y-6 animate-in fade-in duration-500">
-            
-            {/* Appearance */}
             <div className="bg-[#161b22] p-6 rounded-2xl border border-gray-800">
               <h2 className="text-lg font-bold text-white mb-6">🎨 Aparência</h2>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-6">
@@ -803,8 +795,6 @@ export default function App() {
                 </div>
               </div>
             </div>
-
-            {/* Recorrentes */}
             <div className="bg-[#161b22] p-6 rounded-2xl border border-gray-800">
               <h2 className="text-lg font-bold text-white mb-4">🔄 Contas Fixas / Recorrentes</h2>
               <p className="text-sm text-gray-500 mb-4">Transações geradas automaticamente todo mês/semana.</p>
@@ -839,8 +829,6 @@ export default function App() {
                 {recorrentes.length === 0 && <p className="text-center text-gray-500 text-sm py-4">Nenhuma conta fixa cadastrada.</p>}
               </div>
             </div>
-
-            {/* Categorias */}
             <div className="bg-[#161b22] p-6 rounded-2xl border border-gray-800">
               <h2 className="text-lg font-bold text-white mb-4">📂 Categorias & Subcategorias</h2>
               <form onSubmit={adicionarCategoria} className="flex gap-3 mb-3">
@@ -880,7 +868,6 @@ export default function App() {
                 })}
               </div>
             </div>
-            
             <div className="bg-red-500/10 p-6 rounded-2xl border border-red-500/30">
               <h2 className="text-lg font-bold text-red-400 mb-2">⚠️ Zona de Perigo</h2>
               <p className="text-sm text-red-300/70 mb-4">Esta ação apagará permanentemente todas as transações, metas, orçamentos, investimentos e recorrentes.</p>
@@ -888,7 +875,6 @@ export default function App() {
             </div>
           </div>
         )}
-
       </main>
     </div>
   );
